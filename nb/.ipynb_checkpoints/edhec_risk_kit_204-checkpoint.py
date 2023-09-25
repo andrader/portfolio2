@@ -40,13 +40,13 @@ def get_ind_file(filetype, weighting="vw", n_inds=30):
         weighting is one of "ew", "vw"
         number of inds is 30 or 49
     """    
-    if filetype == "returns":
+    if filetype is "returns":
         name = f"{weighting}_rets" 
         divisor = 100
-    elif filetype == "nfirms":
+    elif filetype is "nfirms":
         name = "nfirms"
         divisor = 1
-    elif filetype == "size":
+    elif filetype is "size":
         name = "size"
         divisor = 1
     else:
@@ -270,8 +270,7 @@ def portfolio_vol(weights, covmat):
     Computes the vol of a portfolio from a covariance matrix and constituent weights
     weights are a numpy array or N x 1 maxtrix and covmat is an N x N matrix
     """
-    vol = (weights.T @ covmat @ weights)**0.5
-    return vol 
+    return (weights.T @ covmat @ weights)**0.5
 
 
 def plot_ef2(n_points, er, cov):
@@ -604,7 +603,7 @@ def weight_cw(r, cap_weights, **kwargs):
     Returns the weights of the CW portfolio based on the time series of capweights
     """
     w = cap_weights.loc[r.index[1]]
-    return w/w.sum()
+    return cap_weights.loc[r.index[1]]
 
 def backtest_ws(r, estimation_window=60, weighting=weight_ew, verbose=False, **kwargs):
     """
@@ -621,90 +620,3 @@ def backtest_ws(r, estimation_window=60, weighting=weight_ew, verbose=False, **k
     weights = pd.DataFrame(weights, index=r.iloc[estimation_window:].index, columns=r.columns)
     returns = (weights * r).sum(axis="columns",  min_count=1) #mincount is to generate NAs if all inputs are NAs
     return returns
-
-def sample_cov(r, **kwargs):
-    """
-    Returns the sample covariance of the supplied returns
-    """
-    return r.cov()
-
-def weight_gmv(r, cov_estimator=sample_cov, **kwargs):
-    """
-    Produces the weights of the GMV portfolio given a covariance matrix of the returns 
-    """
-    est_cov = cov_estimator(r, **kwargs)
-    return gmv(est_cov)
-
-def cc_cov(r, **kwargs):
-    """
-    Estimates a covariance matrix by using the Elton/Gruber Constant Correlation model
-    """
-    rhos = r.corr()
-    n = rhos.shape[0]
-    # this is a symmetric matrix with diagonals all 1 - so the mean correlation is ...
-    rho_bar = (rhos.values.sum()-n)/(n*(n-1))
-    ccor = np.full_like(rhos, rho_bar)
-    np.fill_diagonal(ccor, 1.)
-    sd = r.std()
-    return pd.DataFrame(ccor * np.outer(sd, sd), index=r.columns, columns=r.columns)
-
-def shrinkage_cov(r, delta=0.5, **kwargs):
-    """
-    Covariance estimator that shrinks between the Sample Covariance and the Constant Correlation Estimators
-    """
-    prior = cc_cov(r, **kwargs)
-    sample = sample_cov(r, **kwargs)
-    return delta*prior + (1-delta)*sample
-
-def risk_contribution(w,cov):
-    """
-    Compute the contributions to risk of the constituents of a portfolio, given a set of portfolio weights and a covariance matrix
-    """
-    total_portfolio_var = portfolio_vol(w,cov)**2
-    # Marginal contribution of each constituent
-    marginal_contrib = cov@w
-    risk_contrib = np.multiply(marginal_contrib,w.T)/total_portfolio_var
-    return risk_contrib
-
-def target_risk_contributions(target_risk, cov):
-    """
-    Returns the weights of the portfolio that gives you the weights such
-    that the contributions to portfolio risk are as close as possible to
-    the target_risk, given the covariance matrix
-    """
-    n = cov.shape[0]
-    init_guess = np.repeat(1/n, n)
-    bounds = ((0.0, 1.0),) * n # an N-tuple of 2-tuples!
-    # construct the constraints
-    weights_sum_to_1 = {'type': 'eq',
-                        'fun': lambda weights: np.sum(weights) - 1
-    }
-    def msd_risk(weights, target_risk, cov):
-        """
-        Returns the Mean Squared Difference in risk contributions
-        between weights and target_risk
-        """
-        w_contribs = risk_contribution(weights, cov)
-        return ((w_contribs-target_risk)**2).sum()
-    
-    weights = minimize(msd_risk, init_guess,
-                       args=(target_risk, cov), method='SLSQP',
-                       options={'disp': False},
-                       constraints=(weights_sum_to_1,),
-                       bounds=bounds)
-    return weights.x
-
-def equal_risk_contributions(cov):
-    """
-    Returns the weights of the portfolio that equalizes the contributions
-    of the constituents based on the given covariance matrix
-    """
-    n = cov.shape[0]
-    return target_risk_contributions(target_risk=np.repeat(1/n,n), cov=cov)
-
-def weight_erc(r, cov_estimator=sample_cov, **kwargs):
-    """
-    Produces the weights of the ERC portfolio given a covariance matrix of the returns 
-    """
-    est_cov = cov_estimator(r, **kwargs)
-    return equal_risk_contributions(est_cov)
